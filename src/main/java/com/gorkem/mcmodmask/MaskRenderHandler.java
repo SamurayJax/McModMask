@@ -1,21 +1,17 @@
 package com.gorkem.mcmodmask;
 
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
-
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.init.Items;
 import net.minecraft.inventory.EntityEquipmentSlot;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -25,13 +21,14 @@ import org.lwjgl.opengl.GL11;
 
 @Mod.EventBusSubscriber(value = Side.CLIENT, modid = McModMask.MODID)
 public final class MaskRenderHandler {
-    private static final Set<Item> NAMETAG_MASK_ITEMS = createNametagMaskItems();
+    private static final double MAX_NAME_RENDER_DISTANCE_SQ = 32.0D * 32.0D;
+    private static final Frustum NAME_FRUSTUM = new Frustum();
 
     private MaskRenderHandler() {
     }
 
     public static boolean isMask(ItemStack stack) {
-        return !stack.isEmpty() && NAMETAG_MASK_ITEMS.contains(stack.getItem());
+        return MaskItemHelper.isMask(stack);
     }
 
     @SubscribeEvent
@@ -62,12 +59,22 @@ public final class MaskRenderHandler {
 
     private static void renderCustomMaskName(EntityPlayer player, ItemStack maskStack, String maskName, double x, double y, double z) {
         Minecraft minecraft = Minecraft.getMinecraft();
+        Entity cameraEntity = minecraft.getRenderViewEntity();
+        if (cameraEntity == null || player.getDistanceSq(cameraEntity) > MAX_NAME_RENDER_DISTANCE_SQ) {
+            return;
+        }
+
         FontRenderer fontRenderer = minecraft.fontRenderer;
         RenderManager renderManager = minecraft.getRenderManager();
+        NAME_FRUSTUM.setPosition(renderManager.viewerPosX, renderManager.viewerPosY, renderManager.viewerPosZ);
+        if (!NAME_FRUSTUM.isBoundingBoxInFrustum(player.getEntityBoundingBox())) {
+            return;
+        }
+
         Tessellator tessellator = Tessellator.getInstance();
         BufferBuilder buffer = tessellator.getBuffer();
 
-        float yOffset = player.isSneaking() ? 1.7F : 2.0F;
+        float yOffset = player.isSneaking() ? 2.1F : 2.4F;
         float scale = 0.025F;
         int textWidthHalf = fontRenderer.getStringWidth(maskName) / 2;
 
@@ -99,6 +106,7 @@ public final class MaskRenderHandler {
             tessellator.draw();
 
             GlStateManager.enableTexture2D();
+            // Renk kodlari (section sign + 6, section sign + c vb.) FontRenderer tarafindan dogrudan yorumlanir.
             fontRenderer.drawString(maskName, -textWidthHalf, 0, 553648127);
 
             GlStateManager.enableDepth();
@@ -113,20 +121,5 @@ public final class MaskRenderHandler {
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
             GlStateManager.popMatrix();
         }
-    }
-
-    private static Set<Item> createNametagMaskItems() {
-        Set<Item> items = new HashSet<Item>();
-        items.add(ModItems.CUSTOM_MASK);
-        items.add(Items.LEATHER_HELMET);
-
-        // TODO: Test bittiginde vanilla deri kask destegini kapatmak icin ustteki
-        // TODO: items.add(Items.LEATHER_HELMET); satirini silin veya yorum satirina alin.
-
-        // TODO: Yeni maske/kask esyasi eklediginizde, nametag ozelligini acmak icin
-        // TODO: o item'i burada items.add(ModItems.YENI_MASKENIZ); seklinde listeye ekleyin.
-        // TODO: Sadece HEAD slotuna takilabilen ItemArmor esyalarini eklemek client render hatalarini azaltir.
-
-        return Collections.unmodifiableSet(items);
     }
 }
